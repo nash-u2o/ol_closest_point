@@ -47,7 +47,7 @@ $(function(){
     linestring = e.feature.getGeometry();
   });
 
-  map.addInteraction(drawPoint)
+  map.addInteraction(drawPoint);
 
   $('#select-geom').change(function(){
     switch($(this).val()){
@@ -64,7 +64,9 @@ $(function(){
 
   $("#submit").click(function(){
     //Find the coords of the linestring that are closest to the point. Make those coords into a point and add it to the map
-    const closestPointCoords = linestring.getClosestPoint(point.getCoordinates());
+    const closestFeature = source.getClosestFeatureToCoordinate(point.getCoordinates());
+    const closestLine = closestFeature.getGeometry();
+    const closestPointCoords = closestLine.getClosestPoint(point.getCoordinates());
     const closestPointGeom = new ol.geom.Point(closestPointCoords);
     const closestPointFeature = new ol.Feature({geometry: closestPointGeom});
     const closestPointSource = new ol.source.Vector({features: [closestPointFeature]});
@@ -76,14 +78,15 @@ $(function(){
     const newLineStringStart = new ol.geom.LineString([]);
     const newLineStringEnd = new ol.geom.LineString([]);
     let temp = newLineStringStart;
-    newLineString.appendCoordinate(linestring.getFirstCoordinate());
-    temp.appendCoordinate(linestring.getFirstCoordinate())
-    linestring.forEachSegment(function(start, end){
+    newLineString.appendCoordinate(closestLine.getFirstCoordinate());
+    temp.appendCoordinate(closestLine.getFirstCoordinate());
+
+    closestLine.forEachSegment(function(start, end){
       const newLine = new ol.geom.LineString([start, end]);
-      if(newLine.intersectsCoordinate(closestPointCoords)){
+      if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0001))){
         temp.appendCoordinate(closestPointCoords);
         temp = newLineStringEnd;
-        temp.appendCoordinate(closestPointCoords); // Fix the broken start section Tuesday
+        temp.appendCoordinate(closestPointCoords); 
         temp.appendCoordinate(end);
 
         newLineString.appendCoordinate(closestPointCoords);
