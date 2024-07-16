@@ -1,4 +1,16 @@
 $(function(){
+  $('#select-geom option[value="draw-point"]').attr('selected', true);
+
+  const source = new ol.source.Vector();
+  const vector = new ol.layer.Vector({
+      source: source,
+  });
+
+  const placedPointsSource = new ol.source.Vector();
+  const placedPoints = new ol.layer.Vector({
+    source: placedPointsSource
+  })
+
   const map = new ol.Map({
     view: new ol.View({
         center: [0, 0],
@@ -8,98 +20,103 @@ $(function(){
       new ol.layer.Tile({
         source: new ol.source.OSM(),
       }),
+      vector,
+      placedPoints
     ],
     target: 'map',
   });
 
-  map.getViewport().addEventListener('dragover', (event) => {
-    event.preventDefault();
+  let point, linestring;
+
+  const drawPoint = new ol.interaction.Draw({
+    type: "Point",
+    source: placedPointsSource,
   });
-  
-  map.getViewport().addEventListener('drop', (event) => {
-    // Get the files and slice the extension out of the filename
-    event.preventDefault();
-    const files = event.dataTransfer.files;
-    for (let i = 0; i < files.length; ++i) {
-      // Slice the extension out of the filename
-      const file = files.item(i);
-      const fileName = file.name;
-      const extension = fileName.slice(fileName.lastIndexOf(".") + 1);
 
-      switch (extension){
-        case "geojson":
-          var reader = new FileReader();
-          reader.onload = (e) => {
-            //Load the features from the geojson
-            const geojsonData = JSON.parse(e.target.result);
-            const features = new ol.format.GeoJSON().readFeatures(geojsonData);
+  drawPoint.on("drawend", function(e){
+    point = e.feature.getGeometry();
+  });
 
-            //Assuming we are taking in a linestring and point for this example
-            let linestring, point;
-            for(let i = 0; i < Object.keys(features).length; i++){
-              let feature = features[Object.keys(features)[i]];
-              if(feature.getGeometry() instanceof ol.geom.Point){
-                point = feature;
-              } else if(feature.getGeometry() instanceof ol.geom.LineString){
-                linestring = feature;
-              }
-            }
+  //NOTE: geojson lines exported from this program will not appear in QGIS unless they are "MultiLineString" instead of LineString
+  const drawPolyline = new ol.interaction.Draw({
+    type: "LineString",
+    source: source,
+  });
 
-            //Create separate sources for the linestring and the point
-            const lineSource = new ol.source.Vector({
-              features: [linestring]
-            });
-            const pointSource = new ol.source.Vector({
-              features: [point]
-            });
+  drawPolyline.on("drawend", function(e){
+    linestring = e.feature.getGeometry();
+  });
 
-            //Also create separate layers
-            const lineLayer = new ol.layer.Vector({
-              source: lineSource
-            });
-            const pointLayer = new ol.layer.Vector({
-              source: pointSource
-            });
+  map.addInteraction(drawPoint)
 
-            map.addLayer(lineLayer);
-            map.addLayer(pointLayer);
-
-            //Find the coords of the linestring that are closest to the point. Make those coords into a point and add it to the map
-            const closestPointCoords = linestring.getGeometry().getClosestPoint(point.getGeometry().getCoordinates());
-            const closestPointGeom = new ol.geom.Point(closestPointCoords);
-            const closestPointFeature = new ol.Feature({geometry: closestPointGeom});
-            const closestPointSource = new ol.source.Vector({features: [closestPointFeature]});
-            const closestPointLayer = new ol.layer.Vector({source: closestPointSource});
-            map.addLayer(closestPointLayer);
-
-            //Create a new linestring with the original segments, but split the segment intersected by the closestPointCoords into two separate segments
-            const newLineString = new ol.geom.LineString([]);
-            const line2 = new ol.geom.LineString([])
-            newLineString.appendCoordinate(linestring.getGeometry().getFirstCoordinate());
-            linestring.getGeometry().forEachSegment(function(start, end){
-              const newLine = new ol.geom.LineString([start, end]);
-              if(newLine.intersectsCoordinate(closestPointCoords)){
-                newLineString.appendCoordinate(closestPointCoords);
-                newLineString.appendCoordinate(end);
-
-                line2.appendCoordinate(closestPointCoords)
-                line2.appendCoordinate(end)
-              } else {
-                newLineString.appendCoordinate(end);
-              }
-            });
-
-            //Do the setup to display the new linestring and remove the old linestring.
-            const newLineFeature = new ol.Feature({geometry: newLineString});
-            const newLineSource = new ol.source.Vector({features: [newLineFeature]});
-            const newLineLayer = new ol.layer.Vector({source: newLineSource});
-            map.removeLayer(lineLayer);
-            map.addLayer(newLineLayer);
-
-          };
-          reader.readAsText(file);
-          break;
-      }
+  $('#select-geom').change(function(){
+    switch($(this).val()){
+      case 'draw-polyline':
+        map.removeInteraction(drawPoint);
+        map.addInteraction(drawPolyline);
+        break;
+      case 'draw-point':
+        map.removeInteraction(drawPolyline);
+        map.addInteraction(drawPoint);
+        break;
     }
+  });
+
+  $("#submit").click(function(){
+    //Find the coords of the linestring that are closest to the point. Make those coords into a point and add it to the map
+    const closestPointCoords = linestring.getClosestPoint(point.getCoordinates());
+    const closestPointGeom = new ol.geom.Point(closestPointCoords);
+    const closestPointFeature = new ol.Feature({geometry: closestPointGeom});
+    const closestPointSource = new ol.source.Vector({features: [closestPointFeature]});
+    const closestPointLayer = new ol.layer.Vector({source: closestPointSource});
+    map.addLayer(closestPointLayer);
+
+    //Create a new linestring with the original segments, but split the segment intersected by the closestPointCoords into two separate segments
+    const newLineString = new ol.geom.LineString([]);
+    const newLineStringStart = new ol.geom.LineString([]);
+    const newLineStringEnd = new ol.geom.LineString([]);
+    let temp = newLineStringStart;
+    newLineString.appendCoordinate(linestring.getFirstCoordinate());
+    temp.appendCoordinate(linestring.getFirstCoordinate())
+    linestring.forEachSegment(function(start, end){
+      const newLine = new ol.geom.LineString([start, end]);
+      if(newLine.intersectsCoordinate(closestPointCoords)){
+        temp.appendCoordinate(closestPointCoords);
+        temp = newLineStringEnd;
+        temp.appendCoordinate(closestPointCoords); // Fix the broken start section Tuesday
+        temp.appendCoordinate(end);
+
+        newLineString.appendCoordinate(closestPointCoords);
+        newLineString.appendCoordinate(end);
+      } else {
+        temp.appendCoordinate(end);
+        newLineString.appendCoordinate(end);
+      }
+    });
+
+    //Do the setup to display the new linestring and remove the old linestring.
+    const newLineFeature = new ol.Feature({geometry: newLineString});
+    const newLineSource = new ol.source.Vector({features: [newLineFeature]});
+    const newLineLayer = new ol.layer.Vector({source: newLineSource});
+
+    const newLineFeatureStart = new ol.Feature({geometry: newLineStringStart});
+    const newLineSourceStart = new ol.source.Vector({features: [newLineFeatureStart]});
+    const newLineLayerStart = new ol.layer.Vector({source: newLineSourceStart});
+
+    var lineStyle = new ol.style.Style({
+      stroke: new ol.style.Stroke({
+          color: 'rgba(255, 0, 0, 1)', // red color
+          width: 2
+      })
+    });
+    const newLineFeatureEnd  = new ol.Feature({geometry: newLineStringEnd});
+    newLineFeatureEnd.setStyle(lineStyle);
+    const newLineSourceEnd = new ol.source.Vector({features: [newLineFeatureEnd]});
+    const newLineLayerEnd = new ol.layer.Vector({source: newLineSourceEnd});
+
+    //map.removeLayer(vector);
+    map.addLayer(newLineLayerStart);
+    map.addLayer(newLineLayerEnd);
+    //map.addLayer(newLineLayer);
   });
 });
