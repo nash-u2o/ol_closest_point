@@ -26,15 +26,32 @@ $(function(){
     target: 'map',
   });
 
+  const pointStyle = new ol.style.Style({
+    image: new ol.style.Circle({
+      radius: 8,
+      fill: new ol.style.Fill({color: 'red'}),
+      stroke: new ol.style.Stroke({color: 'black', width: 1})
+    })
+  });
+
+  const lineStyle = new ol.style.Style({
+    stroke: new ol.style.Stroke({
+        color: 'rgba(255, 0, 0, 1)', // red color
+        width: 8
+    })
+  });
+
   let point, linestring;
 
   const drawPoint = new ol.interaction.Draw({
     type: "Point",
+    style: pointStyle,
     source: placedPointsSource,
   });
 
   drawPoint.on("drawend", function(e){
     point = e.feature.getGeometry();
+    e.feature.setStyle(pointStyle)
   });
 
   //NOTE: geojson lines exported from this program will not appear in QGIS unless they are "MultiLineString" instead of LineString
@@ -83,7 +100,7 @@ $(function(){
 
     closestLine.forEachSegment(function(start, end){
       const newLine = new ol.geom.LineString([start, end]);
-      if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0001))){
+      if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){
         temp.appendCoordinate(closestPointCoords);
         temp = newLineStringEnd;
         temp.appendCoordinate(closestPointCoords); 
@@ -106,12 +123,6 @@ $(function(){
     const newLineSourceStart = new ol.source.Vector({features: [newLineFeatureStart]});
     const newLineLayerStart = new ol.layer.Vector({source: newLineSourceStart});
 
-    var lineStyle = new ol.style.Style({
-      stroke: new ol.style.Stroke({
-          color: 'rgba(255, 0, 0, 1)', // red color
-          width: 2
-      })
-    });
     const newLineFeatureEnd  = new ol.Feature({geometry: newLineStringEnd});
     newLineFeatureEnd.setStyle(lineStyle);
     const newLineSourceEnd = new ol.source.Vector({features: [newLineFeatureEnd]});
