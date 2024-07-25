@@ -34,9 +34,16 @@ $(function(){
     })
   });
 
-  const lineStyle = new ol.style.Style({
+  const lineStyleEnd = new ol.style.Style({
     stroke: new ol.style.Stroke({
         color: 'rgba(255, 0, 0, 1)', // red color
+        width: 8
+    })
+  });
+
+  const lineStyleStart = new ol.style.Style({
+    stroke: new ol.style.Stroke({
+        color: 'rgba(0, 255, 0, 1)', // red color
         width: 8
     })
   });
@@ -91,40 +98,62 @@ $(function(){
     map.addLayer(closestPointLayer);
 
     //Create a new linestring with the original segments, but split the segment intersected by the closestPointCoords into two separate segments
-    const newLineString = new ol.geom.LineString([]);
+    //const newLineString = new ol.geom.LineString([]);
     const newLineStringStart = new ol.geom.LineString([]);
     const newLineStringEnd = new ol.geom.LineString([]);
-    let temp = newLineStringStart;
-    newLineString.appendCoordinate(closestLine.getFirstCoordinate());
-    temp.appendCoordinate(closestLine.getFirstCoordinate());
+    newLineStringStart.appendCoordinate(closestLine.getFirstCoordinate());
+    //let temp = newLineStringStart;
+    //newLineString.appendCoordinate(closestLine.getFirstCoordinate());
 
+    // Code that uses references
+    // temp.appendCoordinate(closestLine.getFirstCoordinate());
+
+    // closestLine.forEachSegment(function(start, end){
+    //   const newLine = new ol.geom.LineString([start, end]);
+    //   if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){
+    //     temp.appendCoordinate(closestPointCoords);
+    //     temp = newLineStringEnd;
+    //     temp.appendCoordinate(closestPointCoords); 
+    //     temp.appendCoordinate(end);
+
+    //     newLineString.appendCoordinate(closestPointCoords);
+    //     newLineString.appendCoordinate(end);
+    //   } else {
+    //     temp.appendCoordinate(end);
+    //     newLineString.appendCoordinate(end);
+    //   }
+    // });
+
+    // Code that doesn't use references
+    let lineStartFlag = true;
     closestLine.forEachSegment(function(start, end){
       const newLine = new ol.geom.LineString([start, end]);
       if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){
-        temp.appendCoordinate(closestPointCoords);
-        temp = newLineStringEnd;
-        temp.appendCoordinate(closestPointCoords); 
-        temp.appendCoordinate(end);
+        newLineStringStart.appendCoordinate(closestPointCoords);
 
-        newLineString.appendCoordinate(closestPointCoords);
-        newLineString.appendCoordinate(end);
+        newLineStringEnd.appendCoordinate(closestPointCoords);
+        newLineStringEnd.appendCoordinate(end);
+
+        lineStartFlag=false;
+      } else if(lineStartFlag){
+        newLineStringStart.appendCoordinate(end);
       } else {
-        temp.appendCoordinate(end);
-        newLineString.appendCoordinate(end);
+        newLineStringEnd.appendCoordinate(end);
       }
     });
 
     //Do the setup to display the new linestring and remove the old linestring.
-    const newLineFeature = new ol.Feature({geometry: newLineString});
-    const newLineSource = new ol.source.Vector({features: [newLineFeature]});
-    const newLineLayer = new ol.layer.Vector({source: newLineSource});
+    // const newLineFeature = new ol.Feature({geometry: newLineString});
+    // const newLineSource = new ol.source.Vector({features: [newLineFeature]});
+    // const newLineLayer = new ol.layer.Vector({source: newLineSource});
 
     const newLineFeatureStart = new ol.Feature({geometry: newLineStringStart});
+    newLineFeatureStart.setStyle(lineStyleStart);
     const newLineSourceStart = new ol.source.Vector({features: [newLineFeatureStart]});
     const newLineLayerStart = new ol.layer.Vector({source: newLineSourceStart});
 
     const newLineFeatureEnd  = new ol.Feature({geometry: newLineStringEnd});
-    newLineFeatureEnd.setStyle(lineStyle);
+    newLineFeatureEnd.setStyle(lineStyleEnd);
     const newLineSourceEnd = new ol.source.Vector({features: [newLineFeatureEnd]});
     const newLineLayerEnd = new ol.layer.Vector({source: newLineSourceEnd});
 
