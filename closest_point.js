@@ -1,11 +1,13 @@
 $(function(){
   $('#select-geom option[value="draw-point"]').attr('selected', true);
 
+  // Used for storing lines from the draw interactions
   const source = new ol.source.Vector();
   const vector = new ol.layer.Vector({
       source: source,
   });
 
+  // Used for storing points from the draw interactions
   const placedPointsSource = new ol.source.Vector();
   const placedPoints = new ol.layer.Vector({
     source: placedPointsSource
@@ -26,29 +28,28 @@ $(function(){
     target: 'map',
   });
 
+  // All points and lines are big for the example. Change radius and width to make more visually appealing
   const pointStyle = new ol.style.Style({
     image: new ol.style.Circle({
-      radius: 8,
+      radius: 8, 
       fill: new ol.style.Fill({color: 'red'}),
       stroke: new ol.style.Stroke({color: 'black', width: 1})
     })
   });
 
-  const lineStyleEnd = new ol.style.Style({
-    stroke: new ol.style.Stroke({
-        color: 'rgba(255, 0, 0, 1)', // red color
-        width: 8
-    })
-  });
-
   const lineStyleStart = new ol.style.Style({
     stroke: new ol.style.Stroke({
-        color: 'rgba(0, 255, 0, 1)', // red color
+        color: 'red',
         width: 8
     })
   });
 
-  let point, linestring;
+  const lineStyleEnd = new ol.style.Style({
+    stroke: new ol.style.Stroke({
+        color: 'green',
+        width: 8
+    })
+  });
 
   const drawPoint = new ol.interaction.Draw({
     type: "Point",
@@ -56,15 +57,16 @@ $(function(){
     source: placedPointsSource,
   });
 
-  drawPoint.on("drawend", function(e){
-    point = e.feature.getGeometry();
-    e.feature.setStyle(pointStyle)
-  });
-
-  //NOTE: geojson lines exported from this program will not appear in QGIS unless they are "MultiLineString" instead of LineString
   const drawPolyline = new ol.interaction.Draw({
     type: "LineString",
     source: source,
+  });
+
+  let point, linestring;
+
+  drawPoint.on("drawend", function(e){
+    point = e.feature.getGeometry();
+    e.feature.setStyle(pointStyle)
   });
 
   drawPolyline.on("drawend", function(e){
@@ -87,7 +89,7 @@ $(function(){
   });
 
   $("#submit").click(function(){
-    //Find the coords of the linestring that are closest to the point. Make those coords into a point and add it to the map
+    // Find the coords of the linestring that are closest to the point. Make those coords into a point and add it to the map
     const closestFeature = source.getClosestFeatureToCoordinate(point.getCoordinates());
     const closestLine = closestFeature.getGeometry();
     const closestPointCoords = closestLine.getClosestPoint(point.getCoordinates());
@@ -97,38 +99,17 @@ $(function(){
     const closestPointLayer = new ol.layer.Vector({source: closestPointSource});
     map.addLayer(closestPointLayer);
 
-    //Create a new linestring with the original segments, but split the segment intersected by the closestPointCoords into two separate segments
-    //const newLineString = new ol.geom.LineString([]);
+    // Create a new linestring with the original segments, but split the segment intersected by the closestPointCoords into two separate segments
     const newLineStringStart = new ol.geom.LineString([]);
     const newLineStringEnd = new ol.geom.LineString([]);
     newLineStringStart.appendCoordinate(closestLine.getFirstCoordinate());
-    //let temp = newLineStringStart;
-    //newLineString.appendCoordinate(closestLine.getFirstCoordinate());
 
-    // Code that uses references
-    // temp.appendCoordinate(closestLine.getFirstCoordinate());
-
-    // closestLine.forEachSegment(function(start, end){
-    //   const newLine = new ol.geom.LineString([start, end]);
-    //   if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){
-    //     temp.appendCoordinate(closestPointCoords);
-    //     temp = newLineStringEnd;
-    //     temp.appendCoordinate(closestPointCoords); 
-    //     temp.appendCoordinate(end);
-
-    //     newLineString.appendCoordinate(closestPointCoords);
-    //     newLineString.appendCoordinate(end);
-    //   } else {
-    //     temp.appendCoordinate(end);
-    //     newLineString.appendCoordinate(end);
-    //   }
-    // });
-
-    // Code that doesn't use references
+    // Build the start and end linestrings
     let lineStartFlag = true;
     closestLine.forEachSegment(function(start, end){
       const newLine = new ol.geom.LineString([start, end]);
-      if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){
+      // If line intersects closestPoint flip the flag and start building the end line
+      if(newLine.intersectsExtent(ol.extent.buffer(closestPointGeom.getExtent(), .0000001))){ // I chose to use intersectsExtent here, but intersectsCoordinate should be slightly simpler and work just as well
         newLineStringStart.appendCoordinate(closestPointCoords);
 
         newLineStringEnd.appendCoordinate(closestPointCoords);
@@ -142,11 +123,7 @@ $(function(){
       }
     });
 
-    //Do the setup to display the new linestring and remove the old linestring.
-    // const newLineFeature = new ol.Feature({geometry: newLineString});
-    // const newLineSource = new ol.source.Vector({features: [newLineFeature]});
-    // const newLineLayer = new ol.layer.Vector({source: newLineSource});
-
+    // Make lines into features, style them, and then put them in a layer to display on map
     const newLineFeatureStart = new ol.Feature({geometry: newLineStringStart});
     newLineFeatureStart.setStyle(lineStyleStart);
     const newLineSourceStart = new ol.source.Vector({features: [newLineFeatureStart]});
@@ -157,9 +134,7 @@ $(function(){
     const newLineSourceEnd = new ol.source.Vector({features: [newLineFeatureEnd]});
     const newLineLayerEnd = new ol.layer.Vector({source: newLineSourceEnd});
 
-    //map.removeLayer(vector);
     map.addLayer(newLineLayerStart);
     map.addLayer(newLineLayerEnd);
-    //map.addLayer(newLineLayer);
   });
 });
